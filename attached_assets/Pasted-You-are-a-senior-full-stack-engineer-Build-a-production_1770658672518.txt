@@ -1,0 +1,601 @@
+You are a senior full-stack engineer. Build a production-ready web application that replicates core features of modern project management tools like Notion, Monday.com, Trello, and Circle.app. The product must support workspaces, boards, tasks, docs, comments, activity logs, notifications, team roles, and Google SSO.
+
+0) Product Name
+
+Use a placeholder name: “OrbitPM”.
+
+1) Tech Stack Requirements
+
+Build with the following stack (do not change unless needed for Replit limitations):
+
+Frontend: Next.js (App Router) + TypeScript
+
+UI: TailwindCSS + shadcn/ui (Radix) components
+
+State/Data: React Query (TanStack Query) or Server Actions where appropriate
+
+Backend: Next.js API Routes (or server actions) + Node runtime
+
+Database: PostgreSQL with Prisma ORM
+
+Auth: NextAuth.js (Auth.js) with Google OAuth (Google SSO) + session management
+
+File Storage: Use local storage for dev; design abstraction for S3-compatible storage later
+
+Editor: TipTap or Slate for rich-text doc pages (Notion-like blocks)
+
+Drag & Drop: @dnd-kit for Kanban drag/drop and sortable columns
+
+Realtime (optional but preferred): Pusher or Socket.io (if too heavy, implement “near-realtime” via polling + optimistic updates)
+
+2) Core Modules (Must-Have)
+
+Implement these modules end-to-end:
+
+A) Authentication & Accounts
+
+Google SSO login using OAuth
+
+Also allow “email magic link” fallback ONLY if easy; otherwise Google-only is fine
+
+Each user has:
+
+id, name, email, avatar
+
+memberships (workspaces)
+
+After first login:
+
+If no workspace exists, auto-create a default workspace and onboarding
+
+B) Workspaces (Multi-tenant)
+
+A workspace is the top-level organization container.
+
+Workspace contains: members, teams, projects/boards, docs, settings.
+
+Workspace roles:
+
+Owner
+
+Admin
+
+Member
+
+Guest (read-only or limited access)
+
+Owner/Admin can invite members by email.
+
+Guests can be invited to specific boards/docs only.
+
+C) Projects / Boards (Trello/Monday hybrid)
+
+Each workspace can create multiple boards/projects.
+
+Board types:
+
+Kanban Board (columns + cards)
+
+Table Board (Monday-style table)
+
+Docs Space (Notion-style pages, nested)
+
+A board must support:
+
+name, icon/emoji, cover color
+
+visibility: workspace-only / private / shared-by-link
+
+members and permissions per board
+
+D) Tasks (Cards/Items)
+
+A task is the primary work item and can exist on Kanban and Table views.
+
+Task features:
+
+title, description (rich text)
+
+status (based on column or status field)
+
+priority (Low/Med/High/Urgent)
+
+assignees (multiple)
+
+due date
+
+labels/tags (multiple)
+
+attachments
+
+checklist items
+
+comments (threaded)
+
+activity history / audit log
+
+relations:
+
+belongs to board
+
+optionally belongs to a “parent doc page” (for Notion-like embedded tasks)
+
+E) Kanban View (Trello)
+
+columns are configurable per board
+
+drag tasks between columns
+
+drag reorder within column
+
+persist ordering in DB (position fields)
+
+column WIP limit optional (nice-to-have)
+
+F) Table View (Monday)
+
+tasks displayed as rows
+
+columns configurable (some built-in: Status, Due date, Assignees, Priority)
+
+support custom fields:
+
+text
+
+number
+
+date
+
+single select
+
+multi select
+
+checkbox
+
+editing inline (cells)
+
+sorting and filtering
+
+G) Docs (Notion-like)
+
+A “Doc Page” supports nested pages (tree)
+
+Rich text blocks (headings, bullet lists, toggles, checkboxes, code block)
+
+Each doc page can embed:
+
+tasks list
+
+board view link
+
+Permissions:
+
+board-level permission or doc-level permission
+
+Basic slash commands (/, minimal set)
+
+H) Community / Circle.app-ish (Light version)
+
+Inside each workspace, add a “Community” section:
+
+“Spaces” (like channels)
+
+Posts with title + rich content
+
+Comments
+
+Reactions (like/emoji)
+
+Optional: pinned posts
+
+I) Notifications
+
+In-app notifications:
+
+assigned to task
+
+mentioned in comment
+
+invited to workspace
+
+due date reminder (simple cron-like job can be simulated)
+
+Notification bell in header
+
+Mark as read / unread
+
+J) Activity Log / Audit Trail
+
+Track key events:
+
+task created/updated/moved
+
+comment added
+
+doc updated
+
+member invited/role changed
+Store:
+
+actor user id
+
+action type
+
+entity id/type
+
+timestamp
+
+metadata (JSON)
+
+3) UX / UI Requirements
+
+The UI must feel like a modern SaaS PM tool.
+
+Layout
+
+Left Sidebar:
+
+workspace switcher
+
+boards list
+
+docs tree
+
+community spaces
+
+settings
+
+Top Bar:
+
+search
+
+create button (task/doc/board)
+
+notifications
+
+profile menu
+
+Main content area:
+
+board view tabs: Kanban | Table | Docs
+
+Use responsive design:
+
+collapsible sidebar on mobile
+
+Design system
+
+Use shadcn/ui components
+
+Consistent spacing, typography, and hover states
+
+Use toast notifications for success/error
+
+Use skeleton loaders for data fetch
+
+4) Data Model (Prisma Schema Requirements)
+
+Create a clean Prisma schema with these concepts (minimum). Use UUIDs.
+
+Entities:
+
+User
+
+Workspace
+
+WorkspaceMember (role)
+
+Invite (workspace invites)
+
+Board
+
+BoardMember (permission)
+
+Column (for Kanban)
+
+Task
+
+TaskAssignee
+
+Label
+
+TaskLabel
+
+Comment (thread support via parentId)
+
+Attachment
+
+ChecklistItem
+
+DocPage (tree structure with parentId)
+
+CommunitySpace
+
+Post
+
+Reaction
+
+Notification
+
+ActivityLog
+
+CustomField
+
+CustomFieldValue
+
+Required fields:
+
+createdAt, updatedAt on all
+
+soft delete optional (deletedAt)
+
+Ensure:
+
+Multi-tenant safety: every entity belongs to workspace (directly or through board/doc).
+
+Indexes on foreign keys.
+
+Ordering fields for columns and tasks (position as float or int with gap).
+
+5) Permissions & Security Rules
+
+Implement server-side authorization checks for every mutation and sensitive query.
+
+Rules:
+
+Must verify user session on every protected route.
+
+Workspace:
+
+Owner/Admin can manage members and settings
+
+Members can create boards/tasks/docs unless restricted
+
+Board:
+
+Private boards only visible to board members
+
+Guests can view/edit only what granted
+
+Doc pages inherit permission from board or explicit shares
+
+Activity log visible to members only
+
+6) Feature Details & Behaviors
+A) Search
+
+Global search input in top bar:
+
+search tasks, docs, posts
+
+scoped to current workspace
+
+Return grouped results with type badges
+
+B) Mentions
+
+In comments and doc pages:
+
+typing “@” shows user list from workspace
+
+store mentions and notify mentioned users
+
+C) Sharing
+
+Board can be shared by link:
+
+read-only link
+
+edit link (optional)
+
+Doc page sharing:
+
+share link with token
+
+D) Import/Export (optional)
+
+Export board tasks to CSV
+
+7) Pages / Routes (Next.js App Router)
+
+Implement these routes:
+
+Public:
+
+/login (Google SSO)
+
+/auth/callback (NextAuth)
+
+Protected:
+
+/app (redirect to last workspace)
+
+/app/[workspaceId]
+
+/app/[workspaceId]/boards
+
+/app/[workspaceId]/boards/[boardId] (Kanban default)
+
+/app/[workspaceId]/boards/[boardId]/table
+
+/app/[workspaceId]/docs (docs tree)
+
+/app/[workspaceId]/docs/[docId]
+
+/app/[workspaceId]/community
+
+/app/[workspaceId]/community/[spaceId]
+
+/app/[workspaceId]/settings
+
+/app/[workspaceId]/settings/members
+
+Modal/Drawer UX:
+
+Task detail should open in a modal or right drawer from board/table.
+
+8) APIs / Server Actions
+
+Create clear server actions or API routes:
+
+workspaces CRUD
+
+invites send/accept
+
+boards CRUD
+
+columns CRUD + reorder
+
+tasks CRUD + move + reorder
+
+comments CRUD
+
+docs CRUD + tree reorder
+
+posts CRUD + reactions
+
+notifications list/read
+
+activity logs list
+
+custom fields CRUD + values
+
+9) Google SSO Implementation (Must Work)
+
+Use NextAuth Google Provider.
+
+Requirements:
+
+Use environment variables:
+
+GOOGLE_CLIENT_ID
+
+GOOGLE_CLIENT_SECRET
+
+NEXTAUTH_SECRET
+
+NEXTAUTH_URL
+
+DATABASE_URL
+
+On sign-in:
+
+upsert user by email
+
+create default workspace if user has none
+
+Protect all /app routes.
+
+Provide setup instructions in README:
+
+How to configure Google OAuth Consent Screen
+
+Authorized redirect URIs
+
+Environment variables needed in Replit
+
+10) Seed Data & Demo Mode
+
+Add a Prisma seed script:
+
+Create a workspace
+
+Create a board with columns: Backlog, Doing, Review, Done
+
+Create a few tasks with labels and assignees
+
+Create a docs tree
+
+Create a community space with a couple posts
+
+11) Testing / Acceptance Criteria (Must Pass)
+
+The app is considered complete only if:
+
+User can log in with Google successfully
+
+User is redirected to /app and sees their workspace
+
+User can create a board
+
+User can add columns and tasks
+
+Dragging a task updates its column and position in DB
+
+Table view displays tasks and allows inline editing
+
+Docs can be created, nested, and edited with rich text
+
+Comments work and notify mentioned users
+
+Activity logs record major actions
+
+Invites can be sent and accepted
+
+Permissions prevent non-members from accessing private boards
+
+12) Developer Experience
+
+Provide a clean folder structure:
+
+/app routes
+
+/components UI
+
+/lib auth/db/permissions
+
+/prisma schema/seed
+
+Add a README with:
+
+install steps
+
+run migrations
+
+seed db
+
+Google OAuth setup
+
+Add error handling and meaningful messages.
+
+13) Performance & Reliability
+
+Use pagination for:
+
+activity logs
+
+community posts
+
+Use optimistic UI updates for task drag/drop
+
+Validate inputs with Zod
+
+Prevent XSS in rich-text content (sanitize)
+
+14) Replit Constraints
+
+Assume this will run inside Replit.
+
+Provide “one-command” start: npm run dev
+
+Provide migration commands
+
+Avoid overly complex infra; keep it deployable.
+
+15) Deliverables
+
+Output:
+
+A fully working application with all features above.
+
+Prisma schema and migrations.
+
+Seed script.
+
+README with Google SSO setup steps.
+
+Clear instructions on how to run in Replit.
+
+Now start by scaffolding the app, setting up Prisma + Postgres, NextAuth Google SSO, then implement core workspace + board + tasks + Kanban drag/drop first, then table view, then docs, then community, then notifications and activity logs.
+
+Do not skip authorization checks. Do not leave TODOs for core features.

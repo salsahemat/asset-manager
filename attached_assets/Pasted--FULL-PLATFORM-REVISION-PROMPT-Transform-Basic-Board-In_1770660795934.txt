@@ -1,0 +1,442 @@
+🚀 FULL PLATFORM REVISION PROMPT
+
+(Transform Basic Board Into Complete PM Tool)
+
+You are a senior full-stack SaaS engineer.
+
+You are upgrading an existing basic Kanban board application into a full-featured modern project management platform comparable to:
+
+Trello
+
+Monday.com
+
+Notion
+
+ClickUp
+
+The current implementation only supports a simple Kanban board with basic tasks.
+
+You must now implement ALL missing features listed below.
+
+Do not rebuild from scratch.
+Extend the existing architecture cleanly.
+Maintain database integrity and multi-tenant safety.
+
+The goal is to turn this into a production-ready collaborative workspace system.
+
+🌟 PART 1 — BOARD & TASK ENHANCEMENTS
+
+We currently only have Kanban.
+
+We must transform the board into a multi-view workspace.
+
+🔹 Multi-View Support
+
+Add view tabs to each board:
+
+Kanban (existing)
+
+Table view (spreadsheet-style)
+
+Calendar view (month-based)
+
+Timeline / Gantt view (project planning timeline)
+
+Each view must:
+
+Use same task data
+
+Update consistently
+
+Share filters
+
+🔹 Task Detail Drawer
+
+Clicking a task must:
+
+Open a right-side drawer
+
+Update URL to /board/[boardId]/task/[taskId]
+
+Support refresh without closing
+
+Inside task drawer implement:
+
+Editable title
+
+Rich text description (TipTap)
+
+Multi-assignee picker
+
+Due date selector
+
+Labels / tags
+
+Priority field (Low / Medium / High / Urgent)
+
+Checklist with subtasks
+
+File attachments
+
+Task relationships (link tasks)
+
+Comment thread
+
+Activity history panel
+
+All edits must save immediately.
+
+🔹 Advanced Drag & Drop
+
+Improve drag behavior:
+
+Smooth animation
+
+Reorder within column
+
+Move across columns
+
+Persist position in DB
+
+Maintain stable ordering using position field
+
+👥 PART 2 — COLLABORATION & PERMISSIONS
+🔹 Comments & Mentions
+
+Inside each task:
+
+Threaded comments
+
+@mention workspace members
+
+Mention triggers notification
+
+Optimistic UI updates
+
+🔹 Activity Log
+
+Create ActivityLog model:
+
+Track:
+
+Task created
+
+Task moved
+
+Due date changed
+
+Field edited
+
+Comment added
+
+Member assigned
+
+Display activity inside task drawer.
+
+🔹 Roles & Permissions
+
+Implement workspace-level roles:
+
+Owner
+
+Admin
+
+Member
+
+Guest
+
+Implement board-level visibility:
+
+Public to workspace
+
+Private (members only)
+
+Enforce permissions server-side.
+
+Guests cannot edit unless explicitly allowed.
+
+🔹 Notifications System
+
+Create Notification model.
+
+Trigger notifications for:
+
+Assigned to task
+
+Mentioned in comment
+
+Due date approaching
+
+Invited to board
+
+Add notification bell in header.
+
+Allow mark as read.
+
+📄 PART 3 — DOCS SYSTEM (Notion-like)
+
+Create a Docs section inside workspace.
+
+🔹 Nested Pages
+
+Implement:
+
+Tree structure
+
+Parent-child pages
+
+Drag reorder
+
+🔹 Rich Text Editor
+
+Support:
+
+Headings
+
+Bullet lists
+
+Checkboxes
+
+Code blocks
+
+Slash commands
+
+Toggle blocks
+
+🔹 Embedded Views
+
+Allow embedding:
+
+Task list view
+
+Board view
+
+Filtered task list
+
+Inside docs.
+
+📊 PART 4 — DATA VIEWS & REPORTING
+🔹 Filtering & Sorting
+
+Across all views:
+
+Allow filter by:
+
+Assignee
+
+Status
+
+Due date
+
+Priority
+
+Labels
+
+Allow sorting by:
+
+Due date
+
+Priority
+
+Created date
+
+🔹 Grouping
+
+In table view:
+
+Allow:
+
+Group by status
+
+Group by assignee
+
+Group by due date
+
+🔹 Dashboard
+
+Create a dashboard page per workspace:
+
+Display:
+
+Total tasks
+
+Tasks by status
+
+Overdue tasks
+
+Tasks by assignee
+
+Completion rate chart
+
+🔗 PART 5 — INTEGRATIONS & SYNC
+🔹 Calendar Sync
+
+Add ability to:
+
+Export board as iCal feed
+
+Sync tasks to Google Calendar
+
+🔹 External Integrations (Basic Structure)
+
+Prepare integration framework:
+
+Slack webhook support
+
+Email reminders
+
+Google Drive attachments
+
+Dropbox attachment support
+
+Structure must be extensible.
+
+🚀 PART 6 — WORKFLOW POWER FEATURES
+🔹 Automations Engine
+
+Add basic automation rules:
+
+When task moved → notify assignee
+
+When due tomorrow → notify
+
+When status changes → log activity
+
+Automation rules stored in DB.
+
+🔹 Templates
+
+Allow:
+
+Board templates
+
+Task templates
+
+User can create board from template.
+
+🔹 Recurring Tasks
+
+Allow:
+
+Daily
+
+Weekly
+
+Monthly recurrence
+
+Auto-generate next instance when completed.
+
+📱 PART 7 — MOBILE & UX POLISH
+
+Improve UI significantly:
+
+Fully responsive
+
+Sidebar collapsible
+
+Mobile drawer interactions
+
+Keyboard shortcuts:
+
+C = create task
+
+/ = command palette
+
+Global search
+
+Smooth animations
+
+Loading skeletons
+
+Toast notifications
+
+Proper empty states
+
+🔐 PART 8 — ACCOUNT & WORKSPACE MANAGEMENT
+🔹 Google SSO
+
+Ensure:
+
+Proper OAuth
+
+Secure session
+
+Workspace auto-creation on first login
+
+🔹 Invite Flow
+
+Implement:
+
+Invite by email
+
+Accept invite link
+
+Assign role
+
+Join workspace
+
+🔹 Profile Settings
+
+Allow user to:
+
+Update name
+
+Update avatar
+
+Change password (if local auth supported)
+
+🔹 Workspace Switcher
+
+Allow switching between multiple workspaces.
+
+🧠 TECHNICAL REQUIREMENTS
+
+Use Prisma schema updates
+
+Use UUID IDs
+
+All entities scoped by workspaceId
+
+Server-side permission checks
+
+Use Zod validation
+
+Prevent XSS in rich text
+
+Use optimistic UI updates
+
+Use pagination for logs
+
+No full page reloads
+
+🎯 ACCEPTANCE CRITERIA
+
+The upgrade is complete only if:
+
+Multiple views work (Kanban, Table, Calendar, Timeline)
+
+Task drawer fully functional
+
+Mentions create notifications
+
+Activity logs track changes
+
+Docs system works with nested pages
+
+Dashboard exists
+
+Automations trigger correctly
+
+Permissions enforced
+
+Mobile responsive
+
+Search works globally
+
+Invite flow works
+
+Workspace switching works
+
+Do not leave TODOs for core features.
+
+Implement features incrementally, starting from Task Drawer and Roles system, then continue through each section.

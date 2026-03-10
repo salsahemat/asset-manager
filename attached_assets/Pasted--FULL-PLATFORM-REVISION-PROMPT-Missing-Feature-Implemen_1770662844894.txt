@@ -1,0 +1,539 @@
+🚀 FULL PLATFORM REVISION PROMPT (Missing Feature Implementation)
+
+You are a senior full-stack SaaS engineer.
+
+You are improving an existing project management application.
+The current system only supports basic Kanban boards and simple tasks.
+
+You must extend the system into a fully collaborative, multi-workspace, modern project management platform comparable to:
+
+Trello
+
+Monday.com
+
+Notion
+
+ClickUp
+
+Do NOT rebuild from scratch.
+Extend the current architecture cleanly and safely.
+
+All new features must integrate with:
+
+Authentication
+
+Workspace scoping
+
+Permissions
+
+Notifications
+
+Database integrity
+
+1️⃣ Workspace Switching (Multi-Company Support)
+
+The system must support multiple workspaces per user.
+
+Requirements
+
+Add a Workspace Switcher in the sidebar header:
+
+Displays current workspace name and icon
+
+Dropdown shows all workspaces the user belongs to
+
+Button to create a new workspace
+
+Switching workspace must:
+
+Update route context: /app/[workspaceId]/...
+
+Reload boards, docs, chat, and questions scoped to that workspace
+
+Persist last active workspace per user
+
+Add Workspace Settings page:
+
+Rename workspace
+
+Change workspace logo/icon
+
+Manage members and roles (Owner, Admin, Member, Guest)
+
+Backend Requirements
+
+Ensure every entity includes workspaceId
+
+Enforce server-side membership validation
+
+Users must not access workspaces they are not members of
+
+2️⃣ Mentions & Tag Notifications (Per Member)
+
+Add a complete mention system inside:
+
+Task comments
+
+Document pages
+
+Chat messages
+
+Behavior
+
+Typing @ shows autocomplete of workspace members
+
+Mentioned users receive:
+
+In-app notification
+
+Optional email notification (structure only if email not available)
+
+Notification must include:
+
+Who mentioned them
+
+Context (task, doc, chat)
+
+Deep link to the exact entity
+
+Database
+
+Add:
+
+Notification:
+
+id
+
+workspaceId
+
+recipientId
+
+actorId
+
+type ("mention", etc.)
+
+entityType
+
+entityId
+
+readAt
+
+createdAt
+
+Mentions:
+
+Either separate Mention table
+
+Or metadata on comment/message
+
+3️⃣ File Upload & Attachments
+
+Users must be able to upload files and attach them to:
+
+Tasks
+
+Documents
+
+Chat messages
+
+Requirements
+
+Drag & drop upload
+
+File picker upload
+
+Show upload progress
+
+Store locally (design abstraction for future S3)
+
+Attachment UI
+
+Display:
+
+File name
+
+File size
+
+File type
+
+Uploaded by
+
+Uploaded at
+
+Download button
+
+Delete button (permission controlled)
+
+Allowed File Types
+
+Images
+
+PDF
+
+DOCX
+
+XLSX
+
+ZIP
+
+Common document types
+
+Add server-side validation for:
+
+File size limit
+
+Allowed MIME types
+
+Database
+
+FileObject:
+
+id
+
+workspaceId
+
+uploaderId
+
+filePath
+
+mimeType
+
+size
+
+originalName
+
+createdAt
+
+Attachment:
+
+id
+
+workspaceId
+
+entityType
+
+entityId
+
+fileObjectId
+
+createdAt
+
+4️⃣ Task Cover Images
+
+Tasks must support cover images like Trello.
+
+Requirements
+
+Add Cover section inside Task Drawer
+
+Upload or choose existing image
+
+Remove cover option
+
+Kanban cards display cover image at top
+
+Table view optionally shows cover column
+
+Database
+
+Add:
+
+task.coverFileObjectId (nullable)
+
+5️⃣ Group Chat System
+
+Add collaborative group chat.
+
+Chat Scope
+
+Workspace-level chat (default “General” room)
+
+Optional board-specific chat rooms
+
+Features
+
+Real-time messaging (Socket.io preferred; polling acceptable)
+
+Support:
+
+Text messages
+
+Mentions
+
+Attachments
+
+Emoji reactions
+
+Optional read receipts
+
+Notifications for:
+
+Mentions
+
+New messages (if user not currently viewing chat)
+
+Database
+
+ChatRoom:
+
+id
+
+workspaceId
+
+boardId (nullable)
+
+name
+
+createdAt
+
+ChatMessage:
+
+id
+
+roomId
+
+workspaceId
+
+senderId
+
+content
+
+createdAt
+
+updatedAt
+
+ChatReaction:
+
+id
+
+messageId
+
+userId
+
+emoji
+
+ChatMember:
+
+roomId
+
+userId
+
+lastReadAt
+
+6️⃣ Questions Module with Reminder Notifications
+
+Implement a “Questions” feature to ask all members structured questions with reminders.
+
+Behavior
+
+Admins can create a question:
+
+Title
+
+Description
+
+Type:
+
+Short answer
+
+Multiple choice
+
+Poll
+
+Due date
+
+Reminder rules
+
+All workspace members:
+
+Receive notification on creation
+
+Can submit response
+
+Cannot submit twice unless allowed
+
+Admin can:
+
+View response analytics
+
+See who has not responded
+
+Export responses
+
+Reminder System
+
+Implement scheduled reminders:
+
+Notify non-responders before deadline
+
+Notify again if overdue
+
+Use scheduled job or pseudo-cron pattern
+
+Database
+
+Question:
+
+id
+
+workspaceId
+
+creatorId
+
+title
+
+description
+
+type
+
+options (JSON)
+
+dueAt
+
+createdAt
+
+QuestionResponse:
+
+id
+
+questionId
+
+userId
+
+response
+
+createdAt
+
+ReminderRule:
+
+id
+
+questionId
+
+scheduleConfig
+
+enabled
+
+ReminderLog:
+
+id
+
+questionId
+
+userId
+
+sentAt
+
+7️⃣ UI & UX Integration
+
+Update layout to integrate all features naturally.
+
+Sidebar must include:
+
+Workspace Switcher
+
+Boards
+
+Docs
+
+Chat
+
+Questions
+
+Settings
+
+Header must include:
+
+Notification bell with unread badge
+
+Global search
+
+Task cards must show:
+
+Cover image preview
+
+Due date badge
+
+Assignee avatars
+
+Label indicators
+
+Ensure:
+
+Fully responsive
+
+Collapsible sidebar
+
+Smooth animations
+
+No full page reloads
+
+8️⃣ Security & Permissions
+
+Enforce strictly:
+
+Workspace membership required for all content
+
+Guests read-only unless granted edit
+
+File download requires workspace validation
+
+Board chat restricted to board members
+
+All APIs validate:
+
+Session
+
+Workspace membership
+
+Entity ownership
+
+Use server-side validation only (never rely solely on frontend checks).
+
+9️⃣ Implementation Order
+
+Implement in this order:
+
+Workspace switcher and proper scoping
+
+Notification system + mentions
+
+File upload and attachments
+
+Task cover images
+
+Group chat
+
+Questions + reminder engine
+
+Do not leave TODOs for core functionality.
+
+All new models must include:
+
+id (UUID)
+
+workspaceId
+
+createdAt
+
+updatedAt (where applicable)
+
+🎯 Acceptance Criteria
+
+The upgrade is complete only if:
+
+Users can switch workspaces seamlessly
+
+Mentioning someone triggers a notification for that specific user
+
+Files can be uploaded and attached properly
+
+Tasks display cover images
+
+Workspace chat functions properly
+
+Questions notify all members and send reminders to non-responders
+
+All permissions are enforced server-side
+
+System remains stable and scoped per workspace
