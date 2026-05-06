@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Orbit, Check, X } from "lucide-react";
+import { Check, X, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -37,45 +36,112 @@ export default function InvitePage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen p-4">
-        <Card className="p-8 text-center max-w-md w-full">
-          <Orbit className="w-10 h-10 mx-auto text-primary mb-4" />
-          <h2 className="text-lg font-semibold mb-2">Workspace Invite</h2>
-          <p className="text-sm text-muted-foreground mb-4">
+      <div className="flex items-center justify-center min-h-screen bg-white p-4">
+        <div className="flex flex-col items-center w-full max-w-sm text-center">
+          {/* Workspace avatar */}
+          <div className="w-16 h-16 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-2xl mb-6">
+            🗂️
+          </div>
+
+          <h1 className="text-[17px] font-semibold text-[#37352f] mb-2 leading-snug">
+            You've been invited to a workspace
+          </h1>
+          <p className="text-sm text-[#9b9a97] mb-6">
             Please sign in to accept this invitation.
           </p>
-          <Button asChild>
+
+          <Button
+            asChild
+            className="w-full bg-[#2383e2] hover:bg-[#1a6dbf] text-white rounded font-medium text-sm h-9"
+          >
             <a href="/api/login">Sign In</a>
           </Button>
-        </Card>
+
+          {/* Divider */}
+          <div className="w-full h-px bg-[#e9e9e7] my-8" />
+
+          {/* Workspace row */}
+          <div className="w-full flex items-center gap-3 text-left">
+            <div className="w-9 h-9 rounded-md bg-gray-100 border border-gray-200 flex items-center justify-center text-base shrink-0">
+              🚀
+            </div>
+            <div>
+              <div className="text-sm font-medium text-[#37352f]">
+                Workspace
+              </div>
+              <div className="text-xs text-[#9b9a97]">3 members</div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-4">
-      <Card className="p-8 text-center max-w-md w-full">
+    <div className="flex items-center justify-center min-h-screen bg-white p-4">
+      <div className="flex flex-col items-center w-full max-w-sm text-center">
+        {/* Status icon */}
+        <div className="w-16 h-16 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center mb-6">
+          {status === "loading" && (
+            <Loader2 className="w-7 h-7 text-[#9b9a97] animate-spin" />
+          )}
+          {status === "success" && <Check className="w-7 h-7 text-green-600" />}
+          {status === "error" && <X className="w-7 h-7 text-red-500" />}
+        </div>
+
         {status === "loading" && (
           <>
-            <Orbit className="w-10 h-10 mx-auto text-primary mb-4 animate-spin" />
-            <h2 className="text-lg font-semibold">Joining workspace...</h2>
+            <h1 className="text-[17px] font-semibold text-[#37352f] mb-2">
+              Joining workspace...
+            </h1>
+            <p className="text-sm text-[#9b9a97]">
+              Please wait while we add you.
+            </p>
           </>
         )}
 
         {status === "success" && (
           <>
-            <Check className="w-10 h-10 mx-auto text-green-600 mb-4" />
-            <h2 className="text-lg font-semibold">You're in!</h2>
+            <h1 className="text-[17px] font-semibold text-[#37352f] mb-2">
+              You're in!
+            </h1>
+            <p className="text-sm text-[#9b9a97]">
+              Redirecting you to the workspace...
+            </p>
           </>
         )}
 
         {status === "error" && (
           <>
-            <X className="w-10 h-10 mx-auto text-red-600 mb-4" />
-            <h2 className="text-lg font-semibold">Something went wrong</h2>
+            <h1 className="text-[17px] font-semibold text-[#37352f] mb-2">
+              Something went wrong
+            </h1>
+            <p className="text-sm text-[#9b9a97] mb-6">
+              This invite may be invalid or expired.
+            </p>
+            <Button
+              onClick={() => setLocation("/")}
+              className="w-full bg-[#2383e2] hover:bg-[#1a6dbf] text-white rounded font-medium text-sm h-9"
+            >
+              Go Home
+            </Button>
           </>
         )}
-      </Card>
+
+        {/* Divider */}
+        <div className="w-full h-px bg-[#e9e9e7] my-8" />
+
+        {/* Workspace row */}
+        <div className="w-full flex items-center gap-3 text-left">
+          <div className="w-9 h-9 rounded-md bg-gray-100 border border-gray-200 flex items-center justify-center text-base shrink-0">
+            🚀
+          </div>
+          <div>
+            <div className="text-sm font-medium text-[#37352f]">Workspace</div>
+            <div className="text-xs text-[#9b9a97]">3 members</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

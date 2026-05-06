@@ -8,6 +8,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
+import { formatDateKey, normalizeStoredDateKey } from "./date";
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -204,7 +205,16 @@ export async function registerRoutes(
   app.get("/api/workspaces/:workspaceId/my-role", verifyUser, requireWorkspaceMember, async (req: any, res) => {
     try {
       const userId = req.user.id;
+
+      // DEBUG
+      console.log("REQ.USER:", req.user);
+      console.log("USER ID:", userId);
+      console.log("WORKSPACE ID:", req.params.workspaceId);
+
       const role = await storage.getWorkspaceMemberRole(req.params.workspaceId, userId);
+
+      console.log("ROLE FROM DB:", role);
+
       res.json({ role: role || "member" });
     } catch (error) {
       console.error("Error fetching user role:", error);
@@ -214,7 +224,10 @@ export async function registerRoutes(
 
   app.get("/api/workspaces/:workspaceId/stats", verifyUser, requireWorkspaceMember, async (req: any, res) => {
     try {
-      const stats = await storage.getWorkspaceStats(req.params.workspaceId);
+      const role = await storage.getWorkspaceMemberRole(req.params.workspaceId, req.user.id);
+      const stats = role && ["owner", "admin"].includes(role)
+        ? await storage.getWorkspaceStats(req.params.workspaceId)
+        : await storage.getUserPerformance(req.params.workspaceId, req.user.id);
       res.json(stats);
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -224,11 +237,29 @@ export async function registerRoutes(
 
   app.get("/api/workspaces/:workspaceId/detailed-stats", verifyUser, requireWorkspaceMember, async (req: any, res) => {
     try {
-      const stats = await storage.getWorkspaceDetailedStats(req.params.workspaceId);
+      const role = await storage.getWorkspaceMemberRole(req.params.workspaceId, req.user.id);
+      const stats = role && ["owner", "admin"].includes(role)
+        ? await storage.getWorkspaceDetailedStats(req.params.workspaceId)
+        : await storage.getUserPerformance(req.params.workspaceId, req.user.id);
       res.json(stats);
     } catch (error) {
       console.error("Error fetching detailed stats:", error);
       res.status(500).json({ message: "Failed to fetch detailed stats" });
+    }
+  });
+
+  app.get("/api/workspaces/:workspaceId/performance", verifyUser, requireWorkspaceMember, async (req: any, res) => {
+    try {
+      const role = await storage.getWorkspaceMemberRole(req.params.workspaceId, req.user.id);
+      const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+      const targetUserId = role && ["owner", "admin"].includes(role)
+        ? requestedUserId || req.user.id
+        : req.user.id;
+      const performance = await storage.getUserPerformance(req.params.workspaceId, targetUserId);
+      res.json(performance);
+    } catch (error) {
+      console.error("Error fetching performance:", error);
+      res.status(500).json({ message: "Failed to fetch performance" });
     }
   });
 
@@ -293,6 +324,36 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/boards/:boardId", verifyUser, requireBoardMember, async (req: any, res) => {
+    try {
+      if (!["owner", "admin"].includes(req.userRole)) {
+        return res.status(403).json({ message: "Only workspace admins can update boards" });
+      }
+
+      const { name, description, coverColor } = req.body;
+      const updateData: any = {};
+
+      if (name !== undefined) {
+        if (!String(name).trim()) {
+          return res.status(400).json({ message: "Board name is required" });
+        }
+        updateData.name = String(name).trim();
+      }
+      if (description !== undefined) {
+        updateData.description = description ? String(description).trim() : null;
+      }
+      if (coverColor !== undefined) {
+        updateData.coverColor = coverColor;
+      }
+
+      const board = await storage.updateBoard(req.params.boardId, updateData);
+      res.json(board);
+    } catch (error) {
+      console.error("Error updating board:", error);
+      res.status(500).json({ message: "Failed to update board" });
+    }
+  });
+
   app.delete("/api/boards/:boardId", verifyUser, requireBoardMember, async (req: any, res) => {
     try {
       await storage.deleteBoard(req.params.boardId);
@@ -344,7 +405,9 @@ export async function registerRoutes(
 
   app.get("/api/boards/:boardId/tasks", verifyUser, requireBoardMember, async (req: any, res) => {
     try {
-      const tasksList = await storage.getTasksForBoard(req.params.boardId);
+      const tasksList = ["owner", "admin"].includes(req.userRole)
+        ? await storage.getTasksForBoard(req.params.boardId)
+        : await storage.getTasksForBoardForUser(req.params.boardId, req.user.id);
       res.json(tasksList);
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -409,7 +472,14 @@ export async function registerRoutes(
       const updateData: any = {};
       const changes: string[] = [];
 
-      if (title !== undefined) { updateData.title = title; changes.push("title"); }
+      if (title !== undefined) {
+        const trimmedTitle = String(title).trim();
+        if (!trimmedTitle) {
+          return res.status(400).json({ message: "Task title is required" });
+        }
+        updateData.title = trimmedTitle;
+        changes.push("title");
+      }
       if (description !== undefined) { updateData.description = description; changes.push("description"); }
       if (priority !== undefined) { updateData.priority = priority; changes.push("priority"); }
       if (dueDate !== undefined) { updateData.dueDate = dueDate ? new Date(dueDate) : null; changes.push("due date"); }
@@ -1338,6 +1408,146 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to update question" });
     }
   });
+  // ── ATTENDANCE ──────────────────────────────────────────────
+  app.get(
+    "/api/workspaces/:workspaceId/attendance",
+    verifyUser,
+    requireWorkspaceMember,
+    async (req: any, res) => {
+      try {
+        const year = parseInt(req.query.year as string) || new Date().getFullYear();
+        const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+        const data = await storage.getAttendanceForWorkspace(
+          req.params.workspaceId, year, month
+        );
+        res.json(data);
+      } catch (error) {
+        console.error("Error fetching attendance:", error);
+        res.status(500).json({ message: "Failed to fetch attendance" });
+      }
+    }
+  );
 
+  app.get(
+    "/api/workspaces/:workspaceId/attendance/today",
+    verifyUser,
+    requireWorkspaceMember,
+    async (req: any, res) => {
+      try {
+        const data = await storage.getTodayAttendance(
+          req.params.workspaceId,
+          req.user.id
+        );
+        res.json(data);
+      } catch (error) {
+        console.error("Error fetching today attendance:", error);
+        res.status(500).json({ message: "Failed to fetch today attendance" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/attendance/check-in",
+    verifyUser,
+    requireWorkspaceMember,
+    async (req: any, res) => {
+      try {
+        const { status, note, checkInPhoto } = req.body;
+        const today = formatDateKey(new Date());
+        const now = new Date().toISOString();
+        const data = await storage.upsertAttendance({
+          workspaceId: req.params.workspaceId,
+          userId: req.user.id,
+          date: today,
+          status: status || "present",
+          checkIn: now,
+          note: note || null,
+          checkInPhoto: checkInPhoto || null,
+        });
+
+        // Notif ke owner/admin (opsional)
+        res.json(data);
+      } catch (error) {
+        console.error("Error checking in:", error);
+        res.status(500).json({ message: "Failed to check in" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/attendance/check-out",
+    verifyUser,
+    requireWorkspaceMember,
+    async (req: any, res) => {
+      try {
+        const today = formatDateKey(new Date());
+        const existing = await storage.getTodayAttendance(
+          req.params.workspaceId, req.user.id
+        );
+        if (!existing) {
+          return res.status(400).json({ message: "Must check in first" });
+        }
+        const { checkOutPhoto } = req.body;
+        const data = await storage.upsertAttendance({
+          workspaceId: req.params.workspaceId,
+          userId: req.user.id,
+          date: today,
+          status: existing.status,
+          checkIn: existing.checkIn,
+          checkOut: new Date().toISOString(),
+          checkInPhoto: existing.checkInPhoto,
+          checkOutPhoto: checkOutPhoto || null,
+          note: existing.note,
+        });
+        res.json(data);
+      } catch (error) {
+        console.error("Error checking out:", error);
+        res.status(500).json({ message: "Failed to check out" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/attendance/remind",
+    verifyUser,
+    requireWorkspaceAdmin,
+    async (req: any, res) => {
+      try {
+        const today = formatDateKey(new Date());
+        const allMembers = await storage.getWorkspaceMembers(req.params.workspaceId);
+        const todayData = await storage.getAttendanceForWorkspace(
+          req.params.workspaceId,
+          new Date().getFullYear(),
+          new Date().getMonth() + 1
+        );
+        const checkedInIds = todayData
+          .filter((a) => normalizeStoredDateKey(a.date) === today)
+          .map((a) => a.userId);
+
+        const notYet = allMembers.filter(
+          (m) => !checkedInIds.includes(m.userId) && m.userId !== req.user.id
+        );
+
+        for (const member of notYet) {
+          await storage.createNotification({
+            userId: member.userId,
+            workspaceId: req.params.workspaceId,
+            actorId: req.user.id,
+            type: "reminder",
+            title: "Reminder: Belum absen hari ini",
+            message: "Jangan lupa check-in kehadiran kamu hari ini!",
+            entityType: "attendance",
+            entityId: req.params.workspaceId,
+            read: false,
+          });
+        }
+
+        res.json({ reminded: notYet.length });
+      } catch (error) {
+        console.error("Error sending reminder:", error);
+        res.status(500).json({ message: "Failed to send reminder" });
+      }
+    }
+  );
   return httpServer;
 }

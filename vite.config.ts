@@ -6,7 +6,18 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 export default defineConfig({
   plugins: [
     react(),
-    runtimeErrorOverlay(),
+    runtimeErrorOverlay({
+      filter(error) {
+        const message = error.message?.toLowerCase?.() || "";
+        const name = error.name?.toLowerCase?.() || "";
+        return !(
+          name === "aborterror" ||
+          message.includes("signal is aborted without reason") ||
+          message.includes("the operation was aborted") ||
+          message.includes("user aborted a request")
+        );
+      },
+    }),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

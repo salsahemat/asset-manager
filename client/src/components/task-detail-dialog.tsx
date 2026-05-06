@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, apiRequestFormData } from "@/lib/queryClient";
 import {
   Sheet,
   SheetContent,
@@ -127,6 +127,7 @@ export function TaskDetailDialog({
   onOpenChange,
 }: TaskDetailDialogProps) {
   const { toast } = useToast();
+  const boardTasksQueryKey = [`/api/boards/${boardId}/tasks`];
   const { data: task, refetch: refetchTask } = useQuery<TaskWithRelations>({
     queryKey: ["/api/tasks", taskId],
     queryFn: () => apiRequest("GET", `/api/tasks/${taskId}`),
@@ -213,13 +214,24 @@ export function TaskDetailDialog({
 
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<Task>) => {
-      await apiRequest("PATCH", `/api/tasks/${taskId}`, data);
+      return apiRequest<TaskWithRelations>("PATCH", `/api/tasks/${taskId}`, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId] });
+    onSuccess: (updatedTask) => {
+      queryClient.setQueryData(["/api/tasks", taskId], updatedTask);
+      queryClient.setQueryData<TaskWithRelations[]>(boardTasksQueryKey, (current = []) =>
+        current.map((item) =>
+          item.id === taskId
+            ? {
+                ...item,
+                ...updatedTask,
+                assignees: updatedTask.assignees ?? item.assignees,
+                labels: updatedTask.labels ?? item.labels,
+                checklist: updatedTask.checklist ?? item.checklist,
+              }
+            : item,
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: boardTasksQueryKey });
     },
     onError: () => {
       toast({
@@ -230,35 +242,33 @@ export function TaskDetailDialog({
     },
   });
 
-  useEffect(() => {
-    if (!open && task) {
-      if (
-        title !== task.title ||
-        description !== (task.description || "") ||
-        priority !== (task.priority || "medium")
-      ) {
-        updateMutation.mutate({
-          title,
-          description: description || null,
-          priority,
-        });
-      }
-      queryClient.removeQueries({ queryKey: ["/api/tasks", taskId] });
-    }
-  }, [open, task, title, description, priority]);
-
   const deleteMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("DELETE", `/api/tasks/${taskId}`);
     },
     onSuccess: () => {
+      queryClient.setQueryData<TaskWithRelations[]>(
+        boardTasksQueryKey,
+        (current = []) => current.filter((item) => item.id !== taskId),
+      );
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
       });
       queryClient.invalidateQueries({
         queryKey: ["/api/workspaces", workspaceId, "stats"],
       });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/workspaces/${workspaceId}/detailed-stats`],
+      });
+      queryClient.removeQueries({ queryKey: ["/api/tasks", taskId] });
       onOpenChange(false);
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete task",
+        variant: "destructive",
+      });
     },
   });
 
@@ -279,7 +289,11 @@ export function TaskDetailDialog({
       await apiRequest("POST", `/api/tasks/${taskId}/labels`, { labelId });
     },
     onMutate: (labelId) => {
-      setSelectedLabelIds((prev) => new Set([...prev, labelId])); // ← update local state langsung
+      setSelectedLabelIds((prev) => {
+        const s = new Set(prev);
+        s.add(labelId);
+        return s;
+      }); // ← update local state langsung
     },
     onError: (_, labelId) => {
       setSelectedLabelIds((prev) => {
@@ -290,7 +304,7 @@ export function TaskDetailDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
         refetchType: "all",
       });
     },
@@ -308,11 +322,15 @@ export function TaskDetailDialog({
       });
     },
     onError: (_, labelId) => {
-      setSelectedLabelIds((prev) => new Set([...prev, labelId])); // ← rollback
+      setSelectedLabelIds((prev) => {
+        const s = new Set(prev);
+        s.add(labelId);
+        return s;
+      }); // ← rollback
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
         refetchType: "all",
       });
     },
@@ -323,7 +341,11 @@ export function TaskDetailDialog({
       await apiRequest("POST", `/api/tasks/${taskId}/assignees`, { userId });
     },
     onMutate: (userId) => {
-      setSelectedAssigneeIds((prev) => new Set([...prev, userId]));
+      setSelectedAssigneeIds((prev) => {
+        const s = new Set(prev);
+        s.add(userId);
+        return s;
+      });
     },
     onError: (_, userId) => {
       setSelectedAssigneeIds((prev) => {
@@ -334,7 +356,7 @@ export function TaskDetailDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
         refetchType: "all",
       });
     },
@@ -352,11 +374,15 @@ export function TaskDetailDialog({
       });
     },
     onError: (_, userId) => {
-      setSelectedAssigneeIds((prev) => new Set([...prev, userId])); // ← rollback
+      setSelectedAssigneeIds((prev) => {
+        const s = new Set(prev);
+        s.add(userId);
+        return s;
+      }); // ← rollback
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
         refetchType: "all",
       });
     },
@@ -371,7 +397,7 @@ export function TaskDetailDialog({
         queryKey: ["/api/tasks", taskId, "checklist"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
       });
       setNewChecklistTitle("");
     },
@@ -392,7 +418,7 @@ export function TaskDetailDialog({
         queryKey: ["/api/tasks", taskId, "checklist"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
       });
     },
   });
@@ -406,7 +432,7 @@ export function TaskDetailDialog({
         queryKey: ["/api/tasks", taskId, "checklist"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
       });
     },
   });
@@ -415,18 +441,7 @@ export function TaskDetailDialog({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`/api/tasks/${taskId}/attachments`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ message: "Upload failed" }));
-        throw new Error(err.message);
-      }
-      return res.json();
+      return apiRequestFormData("POST", `/api/tasks/${taskId}/attachments`, formData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -463,7 +478,7 @@ export function TaskDetailDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: boardTasksQueryKey,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId] });
     },
@@ -504,10 +519,31 @@ export function TaskDetailDialog({
   };
 
   const handleSave = () => {
+    if (!task) {
+      return;
+    }
+
+    const trimmedTitle = title.trim();
+
+    if (!trimmedTitle) {
+      setTitle(task?.title || "");
+      toast({
+        title: "Title is required",
+        description: "Task title cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (trimmedTitle === (task?.title || "")) {
+      if (trimmedTitle !== title) {
+        setTitle(trimmedTitle);
+      }
+      return;
+    }
+
     updateMutation.mutate({
-      title,
-      description: description || null,
-      priority,
+      title: trimmedTitle,
     });
   };
 
@@ -578,6 +614,12 @@ export function TaskDetailDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleSave}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSave();
+                }
+              }}
               className="text-lg font-semibold border-none p-0 h-auto focus-visible:ring-0 shadow-none"
               data-testid="input-task-title"
             />
@@ -1118,6 +1160,7 @@ export function TaskDetailDialog({
                   <Button
                     variant="destructive"
                     size="sm"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => deleteMutation.mutate()}
                     disabled={deleteMutation.isPending}
                     data-testid="button-delete-task"

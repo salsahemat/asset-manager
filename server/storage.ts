@@ -20,9 +20,10 @@ import {
   type QuestionResponse, type InsertQuestionResponse, questionResponses,
 } from "@shared/schema";
 import { type User, type UpsertUser, users } from "@shared/models/auth";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, and, desc, asc, sql, count, lt, ilike, or } from "drizzle-orm";
 import { inArray } from "drizzle-orm";
+import { formatDateKey } from "./date";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getWorkspacesForUser(userId: string): Promise<Workspace[]>;
@@ -34,11 +35,13 @@ export interface IStorage {
   getBoardsForWorkspace(workspaceId: string): Promise<Board[]>;
   createBoard(data: InsertBoard): Promise<Board>;
   getBoard(id: string): Promise<Board | undefined>;
+  updateBoard(id: string, data: Partial<Board>): Promise<Board>;
   deleteBoard(id: string): Promise<void>;
   getColumnsForBoard(boardId: string): Promise<Column[]>;
   createColumn(data: InsertColumn): Promise<Column>;
   deleteColumn(id: string): Promise<void>;
   getTasksForBoard(boardId: string): Promise<any[]>;
+  getTasksForBoardForUser(boardId: string, userId: string): Promise<any[]>;
   createTask(data: InsertTask): Promise<Task>;
   updateTask(id: string, data: Partial<Task>): Promise<Task>;
   deleteTask(id: string): Promise<void>;
@@ -51,6 +54,7 @@ export interface IStorage {
   deleteLabel(id: string): Promise<void>;
   getWorkspaceStats(workspaceId: string): Promise<{ total: number; completed: number; overdue: number }>;
   getWorkspaceDetailedStats(workspaceId: string): Promise<any>;
+  getUserPerformance(workspaceId: string, userId: string): Promise<any>;
   isWorkspaceMember(workspaceId: string, userId: string): Promise<boolean>;
   isTaskAssignee(taskId: string, userId: string): Promise<boolean>;
   addTaskAssignee(taskId: string, userId: string): Promise<TaskAssignee>;
@@ -105,9 +109,165 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private async buildTaskRelations(taskRows: Task[]): Promise<any[]> {
+    const result = [];
+    for (const task of taskRows) {
+      const assigneeRows = await db
+        .select()
+        .from(taskAssignees)
+        .innerJoin(users, eq(taskAssignees.userId, users.id))
+        .where(eq(taskAssignees.taskId, task.id));
+
+      const labelRows = await db
+        .select()
+        .from(taskLabels)
+        .innerJoin(labels, eq(taskLabels.labelId, labels.id))
+        .where(eq(taskLabels.taskId, task.id));
+
+      const checklistRows = await db
+        .select()
+        .from(checklistItems)
+        .where(eq(checklistItems.taskId, task.id))
+        .orderBy(asc(checklistItems.position));
+
+      result.push({
+        ...task,
+        assignees: assigneeRows.map((r) => ({ user: r.users })),
+        labels: labelRows.map((r) => ({ label: r.labels })),
+        checklist: checklistRows,
+      });
+    }
+    return result;
+  }
+
+  private async getWorkspaceBoardIds(workspaceId: string): Promise<string[]> {
+    const boardRows = await db
+      .select({ id: boards.id })
+      .from(boards)
+      .where(eq(boards.workspaceId, workspaceId));
+    return boardRows.map((board) => board.id);
+  }
+
+  private async getDoneColumnIds(boardIds: string[]): Promise<string[]> {
+    if (boardIds.length === 0) return [];
+    const doneColumns = await db
+      .select({ id: columns.id })
+      .from(columns)
+      .where(
+        and(
+          inArray(columns.boardId, boardIds),
+          sql`LOWER(${columns.name}) IN ('done', 'completed', 'closed')`,
+        ),
+      );
+    return doneColumns.map((column) => column.id);
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  async getAttendanceForWorkspace(
+    workspaceId: string,
+    year: number,
+    month: number
+  ): Promise<any[]> {
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = formatDateKey(new Date(year, month, 0));
+    const result = await pool.query(
+      `SELECT a.*, 
+      u.first_name, u.last_name, u.email, u.profile_image_url
+     FROM attendance a
+     JOIN users u ON u.id = a.user_id
+     WHERE a.workspace_id = $1 AND a.date >= $2 AND a.date <= $3
+     ORDER BY a.date DESC, u.first_name ASC`,
+      [workspaceId, startDate, endDate]
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      workspaceId: r.workspace_id,
+      userId: r.user_id,
+      date: r.date,
+      status: r.status,
+      checkIn: r.check_in,
+      checkOut: r.check_out,
+      note: r.note,
+      checkInPhoto: r.check_in_photo,
+      checkOutPhoto: r.check_out_photo,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      user: {
+        id: r.user_id,
+        firstName: r.first_name,
+        lastName: r.last_name,
+        email: r.email,
+        profileImageUrl: r.profile_image_url,
+      },
+    }));
+  }
+
+  async getTodayAttendance(workspaceId: string, userId: string): Promise<any | null> {
+    const today = formatDateKey(new Date());
+    const result = await pool.query(
+      `SELECT * FROM attendance WHERE workspace_id = $1 AND user_id = $2 AND date = $3`,
+      [workspaceId, userId, today]
+    );
+    if (!result.rows[0]) return null;
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      workspaceId: r.workspace_id,
+      userId: r.user_id,
+      date: r.date,
+      status: r.status,
+      checkIn: r.check_in,
+      checkOut: r.check_out,
+      note: r.note,
+      checkInPhoto: r.check_in_photo,
+      checkOutPhoto: r.check_out_photo,
+    };
+  }
+
+  async upsertAttendance(data: {
+    workspaceId: string;
+    userId: string;
+    date: string;
+    status: string;
+    checkIn?: string | null;
+    checkOut?: string | null;
+    checkInPhoto?: string | null;
+    checkOutPhoto?: string | null;
+    note?: string | null;
+  }): Promise<any> {
+    const result = await pool.query(
+      `INSERT INTO attendance (workspace_id, user_id, date, status, check_in, check_out, check_in_photo, check_out_photo, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (workspace_id, user_id, date)
+     DO UPDATE SET
+       status = EXCLUDED.status,
+       check_in = COALESCE(EXCLUDED.check_in, attendance.check_in),
+       check_out = COALESCE(EXCLUDED.check_out, attendance.check_out),
+       check_in_photo = COALESCE(EXCLUDED.check_in_photo, attendance.check_in_photo),
+       check_out_photo = COALESCE(EXCLUDED.check_out_photo, attendance.check_out_photo),
+       note = EXCLUDED.note,
+       updated_at = NOW()
+     RETURNING *`,
+      [data.workspaceId, data.userId, data.date, data.status,
+      data.checkIn ?? null, data.checkOut ?? null, data.checkInPhoto ?? null, data.checkOutPhoto ?? null, data.note ?? null]
+    );
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      workspaceId: r.workspace_id,
+      userId: r.user_id,
+      date: r.date,
+      status: r.status,
+      checkIn: r.check_in,
+      checkOut: r.check_out,
+      checkInPhoto: r.check_in_photo,
+      checkOutPhoto: r.check_out_photo,
+      note: r.note,
+    };
   }
 
   async getWorkspacesForUser(userId: string): Promise<Workspace[]> {
@@ -182,6 +342,11 @@ export class DatabaseStorage implements IStorage {
     return board;
   }
 
+  async updateBoard(id: string, data: Partial<Board>): Promise<Board> {
+    const [board] = await db.update(boards).set(data).where(eq(boards.id, id)).returning();
+    return board;
+  }
+
   async deleteBoard(id: string): Promise<void> {
     await db.delete(boards).where(eq(boards.id, id));
   }
@@ -203,36 +368,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTasksForBoard(boardId: string): Promise<any[]> {
-    const allTasks = await db.select().from(tasks).where(eq(tasks.boardId, boardId)).orderBy(asc(tasks.position));
+    const allTasks = await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.boardId, boardId))
+      .orderBy(asc(tasks.position));
+    return this.buildTaskRelations(allTasks);
+  }
 
-    const result = [];
-    for (const task of allTasks) {
-      const assigneeRows = await db
-        .select()
-        .from(taskAssignees)
-        .innerJoin(users, eq(taskAssignees.userId, users.id))
-        .where(eq(taskAssignees.taskId, task.id));
+  async getTasksForBoardForUser(boardId: string, userId: string): Promise<any[]> {
+    const assignedTaskRows = await db
+      .select({ taskId: taskAssignees.taskId })
+      .from(taskAssignees)
+      .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+      .where(and(eq(tasks.boardId, boardId), eq(taskAssignees.userId, userId)));
 
-      const labelRows = await db
-        .select()
-        .from(taskLabels)
-        .innerJoin(labels, eq(taskLabels.labelId, labels.id))
-        .where(eq(taskLabels.taskId, task.id));
-
-      const checklistRows = await db
-        .select()
-        .from(checklistItems)
-        .where(eq(checklistItems.taskId, task.id))
-        .orderBy(asc(checklistItems.position));
-
-      result.push({
-        ...task,
-        assignees: assigneeRows.map((r) => ({ user: r.users })),
-        labels: labelRows.map((r) => ({ label: r.labels })),
-        checklist: checklistRows,
-      });
-    }
-    return result;
+    const assignedTaskIds = assignedTaskRows.map((row) => row.taskId);
+    const visibilityCondition =
+      assignedTaskIds.length > 0
+        ? or(eq(tasks.createdBy, userId), inArray(tasks.id, assignedTaskIds))
+        : eq(tasks.createdBy, userId);
+    const allTasks = await db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.boardId, boardId), visibilityCondition))
+      .orderBy(asc(tasks.position));
+    return this.buildTaskRelations(allTasks);
   }
 
   async createTask(data: InsertTask): Promise<Task> {
@@ -370,32 +531,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWorkspaceStats(workspaceId: string): Promise<{ total: number; completed: number; overdue: number }> {
-    const boardRows = await db.select({ id: boards.id }).from(boards).where(eq(boards.workspaceId, workspaceId));
-    if (boardRows.length === 0) return { total: 0, completed: 0, overdue: 0 };
-    const boardIds = boardRows.map((b) => b.id);
+    const boardIds = await this.getWorkspaceBoardIds(workspaceId);
+    if (boardIds.length === 0) return { total: 0, completed: 0, overdue: 0 };
 
     const [totalResult] = await db
       .select({ cnt: count() })
       .from(tasks)
-      .where(sql`${tasks.boardId} IN ${boardIds}`);
+      .where(inArray(tasks.boardId, boardIds));
 
-    const doneColumns = await db
-      .select({ id: columns.id })
-      .from(columns)
-      .where(
-        and(
-          sql`${columns.boardId} IN ${boardIds}`,
-          sql`LOWER(${columns.name}) IN ('done', 'completed', 'closed')`
-        )
-      );
-    const doneIds = doneColumns.map((c) => c.id);
+    const doneIds = await this.getDoneColumnIds(boardIds);
 
     let completed = 0;
     if (doneIds.length > 0) {
       const [completedResult] = await db
         .select({ cnt: count() })
         .from(tasks)
-        .where(sql`${tasks.columnId} IN ${doneIds}`);
+        .where(inArray(tasks.columnId, doneIds));
       completed = completedResult?.cnt || 0;
     }
 
@@ -404,9 +555,9 @@ export class DatabaseStorage implements IStorage {
       .from(tasks)
       .where(
         and(
-          sql`${tasks.boardId} IN ${boardIds}`,
+          inArray(tasks.boardId, boardIds),
           lt(tasks.dueDate, new Date()),
-          doneIds.length > 0 ? sql`${tasks.columnId} NOT IN ${doneIds}` : sql`TRUE`
+          doneIds.length > 0 ? sql`${tasks.columnId} NOT IN ${doneIds}` : sql`TRUE`,
         )
       );
 
@@ -418,11 +569,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWorkspaceDetailedStats(workspaceId: string): Promise<any> {
-    const boardRows = await db.select({ id: boards.id }).from(boards).where(eq(boards.workspaceId, workspaceId));
-    if (boardRows.length === 0) {
+    const boardIds = await this.getWorkspaceBoardIds(workspaceId);
+    if (boardIds.length === 0) {
       return { total: 0, completed: 0, overdue: 0, byStatus: [], byPriority: [], byAssignee: [], recentActivity: [] };
     }
-    const boardIds = boardRows.map((b) => b.id);
 
     const basicStats = await this.getWorkspaceStats(workspaceId);
 
@@ -450,7 +600,7 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
-    const allTasks = await db.select().from(tasks).where(sql`${tasks.boardId} IN ${boardIds}`);
+    const allTasks = await db.select().from(tasks).where(inArray(tasks.boardId, boardIds));
     const byPriority: Record<string, number> = { urgent: 0, high: 0, medium: 0, low: 0 };
     for (const t of allTasks) {
       const p = t.priority || "medium";
@@ -478,6 +628,94 @@ export class DatabaseStorage implements IStorage {
       byStatus,
       byPriority: Object.entries(byPriority).map(([name, cnt]) => ({ name, count: cnt })),
       byAssignee,
+    };
+  }
+
+  async getUserPerformance(workspaceId: string, userId: string): Promise<any> {
+    const boardIds = await this.getWorkspaceBoardIds(workspaceId);
+    if (boardIds.length === 0) {
+      return {
+        user: null,
+        total: 0,
+        completed: 0,
+        overdue: 0,
+        completionRate: 0,
+        byPriority: [],
+        byStatus: [],
+        byAssignee: [],
+        recentActivity: [],
+      };
+    }
+
+    const user = await this.getUser(userId);
+    const assignedTaskRows = await db
+      .select({ taskId: taskAssignees.taskId })
+      .from(taskAssignees)
+      .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+      .where(and(inArray(tasks.boardId, boardIds), eq(taskAssignees.userId, userId)));
+    const assignedTaskIds = assignedTaskRows.map((row) => row.taskId);
+    const visibilityCondition =
+      assignedTaskIds.length > 0
+        ? or(eq(tasks.createdBy, userId), inArray(tasks.id, assignedTaskIds))
+        : eq(tasks.createdBy, userId);
+
+    const userTasks = await db
+      .select()
+      .from(tasks)
+      .where(and(inArray(tasks.boardId, boardIds), visibilityCondition));
+
+    const doneIds = await this.getDoneColumnIds(boardIds);
+    const byPriorityMap: Record<string, number> = {
+      urgent: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    };
+
+    for (const task of userTasks) {
+      const priority = task.priority || "medium";
+      byPriorityMap[priority] = (byPriorityMap[priority] || 0) + 1;
+    }
+
+    const statusRows = await db
+      .select({
+        name: columns.name,
+        color: columns.color,
+        cnt: count(),
+      })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(and(inArray(tasks.boardId, boardIds), visibilityCondition))
+      .groupBy(columns.id, columns.name, columns.color)
+      .orderBy(asc(columns.position));
+
+    const total = userTasks.length;
+    const completed = userTasks.filter((task) => doneIds.includes(task.columnId)).length;
+    const overdue = userTasks.filter(
+      (task) => task.dueDate && task.dueDate < new Date() && !doneIds.includes(task.columnId),
+    ).length;
+
+    return {
+      user: user
+        ? {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profileImageUrl: user.profileImageUrl,
+          }
+        : null,
+      total,
+      completed,
+      overdue,
+      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+      byPriority: Object.entries(byPriorityMap).map(([name, count]) => ({ name, count })),
+      byStatus: statusRows.map((row) => ({
+        name: row.name,
+        color: row.color,
+        count: row.cnt,
+      })),
+      byAssignee: [],
+      recentActivity: [],
     };
   }
 

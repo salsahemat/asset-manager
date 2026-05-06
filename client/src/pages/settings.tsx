@@ -47,23 +47,23 @@ export default function SettingsPage({ workspace }: SettingsPageProps) {
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
 
   const { data: roleData } = useQuery<{ role: string }>({
-    queryKey: ["/api/workspaces", workspace.id, "my-role"],
+    queryKey: [`/api/workspaces/${workspace.id}/my-role`],
   });
   const currentUserRole = roleData?.role || "member";
   const isOwnerOrAdmin = ["owner", "admin"].includes(currentUserRole);
 
   const { data: members = [] } = useQuery<(WorkspaceMember & { user: User })[]>(
     {
-      queryKey: ["/api/workspaces", workspace.id, "members"],
+      queryKey: [`/api/workspaces/${workspace.id}/members`],
     },
   );
 
   const { data: labels = [] } = useQuery<Label[]>({
-    queryKey: ["/api/workspaces", workspace.id, "labels"],
+    queryKey: [`/api/workspaces/${workspace.id}/labels`],
   });
 
   const { data: invites = [] } = useQuery<WorkspaceInvite[]>({
-    queryKey: ["/api/workspaces", workspace.id, "invites"],
+    queryKey: [`/api/workspaces/${workspace.id}/invites`],
   });
 
   const createLabelMutation = useMutation({
@@ -180,7 +180,7 @@ export default function SettingsPage({ workspace }: SettingsPageProps) {
   ];
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-8 overflow-auto h-full">
+    <div className="h-full overflow-y-auto p-6 max-w-3xl mx-auto space-y-8">
       <div>
         <h1
           className="text-2xl font-bold tracking-tight"

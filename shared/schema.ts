@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export * from "./models/auth";
-import { users } from "./models/auth";
+import { users, type User } from "./models/auth";
 
 export const workspaces = pgTable("workspaces", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -15,6 +15,25 @@ export const workspaces = pgTable("workspaces", {
   createdAt: timestamp("created_at").defaultNow(),
   ownerId: varchar("owner_id").notNull().references(() => users.id),
 });
+
+export interface Attendance {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  date: string; // ISO date string YYYY-MM-DD
+  status: "present" | "wfh" | "permission" | "sick";
+  checkIn: string | null;
+  checkOut: string | null;
+  checkInPhoto: string | null;
+  checkOutPhoto: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceWithUser extends Attendance {
+  user: User;
+}
 
 export const workspaceMembers = pgTable("workspace_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

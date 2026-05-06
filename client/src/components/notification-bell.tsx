@@ -20,13 +20,28 @@ export function NotificationBell({ workspaceId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
 
   const { data: unreadCount = 0 } = useQuery<number>({
-    queryKey: ["/api/notifications/unread-count"],
-    refetchInterval: 30000,
+    queryKey: ["/api/notifications/unread-count", workspaceId],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/notifications/unread-count?workspaceId=${workspaceId}`,
+      );
+      return res.count;
+    },
+    enabled: !!workspaceId,
+    refetchInterval: 5000,
   });
 
   const { data: notifications = [] } = useQuery<Notification[]>({
-    queryKey: ["/api/notifications"],
-    enabled: open,
+    queryKey: ["/api/notifications", workspaceId],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/notifications?workspaceId=${workspaceId}`,
+      );
+      return res;
+    },
+    enabled: open && !!workspaceId,
   });
 
   const markReadMutation = useMutation({
@@ -34,28 +49,46 @@ export function NotificationBell({ workspaceId }: NotificationBellProps) {
       await apiRequest("PATCH", `/api/notifications/${id}/read`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notifications", workspaceId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notifications/unread-count", workspaceId],
+      });
     },
   });
 
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/notifications/mark-all-read", { workspaceId });
+      await apiRequest("POST", "/api/notifications/mark-all-read", {
+        workspaceId,
+      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notifications", workspaceId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notifications/unread-count", workspaceId],
+      });
     },
   });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          data-testid="button-notifications"
+        >
           <Bell className="w-4 h-4" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-medium" data-testid="badge-notification-count">
+            <span
+              className="absolute top-1 right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-medium"
+              data-testid="badge-notification-count"
+            >
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -81,7 +114,9 @@ export function NotificationBell({ workspaceId }: NotificationBellProps) {
           {notifications.length === 0 ? (
             <div className="py-8 text-center">
               <Bell className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">No notifications yet</p>
+              <p className="text-sm text-muted-foreground">
+                No notifications yet
+              </p>
             </div>
           ) : (
             <div>
@@ -96,7 +131,9 @@ export function NotificationBell({ workspaceId }: NotificationBellProps) {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm">{notif.message}</p>
                     <span className="text-xs text-muted-foreground">
-                      {notif.createdAt ? new Date(notif.createdAt).toLocaleString() : ""}
+                      {notif.createdAt
+                        ? new Date(notif.createdAt).toLocaleString()
+                        : ""}
                     </span>
                   </div>
                   {!notif.read && (

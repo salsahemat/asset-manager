@@ -23,7 +23,7 @@ export default function LandingPage() {
               className="font-semibold text-lg tracking-tight"
               data-testid="text-logo"
             >
-              OrbitPM
+              Mesa
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -51,9 +51,8 @@ export default function LandingPage() {
             <span className="text-primary">ship faster together</span>
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            OrbitPM brings your team's boards, tasks, and docs into one
-            beautiful workspace. Stay aligned, move fast, and build great
-            things.
+            Mesa brings your team's boards, tasks, and docs into one beautiful
+            workspace. Stay aligned, move fast, and build great things.
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <a href="/api/login">
@@ -149,7 +148,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Orbit className="w-4 h-4 text-primary" />
-            <span>OrbitPM</span>
+            <span>Mesa</span>
           </div>
           <span>Built with care for modern teams</span>
         </div>

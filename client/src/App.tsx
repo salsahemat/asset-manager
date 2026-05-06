@@ -26,6 +26,7 @@ import { CommandPalette } from "@/components/command-palette";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import type { Workspace, Board } from "@shared/schema";
+import AttendancePage from "@/pages/attendance";
 
 function AuthenticatedApp() {
   const { user } = useAuth();
@@ -105,7 +106,7 @@ function AuthenticatedApp() {
           }}
           onCreateWorkspace={() => setShowCreateWorkspace(true)}
         />
-        <div className="flex flex-col flex-1 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
           <header className="flex items-center justify-between gap-2 p-2 border-b shrink-0 h-12">
             <div className="flex items-center gap-2">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
@@ -124,13 +125,14 @@ function AuthenticatedApp() {
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex-1 overflow-hidden">
+          <main className="flex-1 min-h-0 overflow-hidden">
             <Switch>
               <Route path="/">
                 {activeWorkspace ? (
                   <HomePage
                     user={user}
                     workspaceId={activeWorkspace.id}
+                    userRole={userRole}
                     onCreateBoard={() => setShowCreateBoard(true)}
                   />
                 ) : null}
@@ -154,6 +156,14 @@ function AuthenticatedApp() {
               <Route path="/questions">
                 {activeWorkspace ? (
                   <QuestionsPage workspaceId={activeWorkspace.id} />
+                ) : null}
+              </Route>
+              <Route path="/attendance">
+                {activeWorkspace ? (
+                  <AttendancePage
+                    workspaceId={activeWorkspace.id}
+                    userRole={userRole}
+                  />
                 ) : null}
               </Route>
               <Route path="/settings">

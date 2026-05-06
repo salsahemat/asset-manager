@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -92,27 +92,34 @@ export default function BoardPage({
   const [filterLabel, setFilterLabel] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
+  const [boardName, setBoardName] = useState("");
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dropColumnId, setDropColumnId] = useState<string | null>(null);
 
   const { data: board } = useQuery<BoardType>({
-    queryKey: ["/api/boards", boardId],
+    queryKey: [`/api/boards/${boardId}`],
   });
+
+  useEffect(() => {
+    setBoardName(board?.name || "");
+  }, [board?.name]);
 
   const { data: columnsData = [], isLoading: columnsLoading } = useQuery<
     Column[]
   >({
-    queryKey: ["/api/boards", boardId, "columns"],
+    queryKey: [`/api/boards/${boardId}/columns`],
   });
 
   const { data: tasksData = [] } = useQuery<TaskWithExtras[]>({
-    queryKey: ["/api/boards", boardId, "tasks"],
+    queryKey: [`/api/boards/${boardId}/tasks`],
   });
 
   const { data: labels = [] } = useQuery<Label[]>({
-    queryKey: ["/api/workspaces", workspaceId, "labels"],
+    queryKey: [`/api/workspaces/${workspaceId}/labels`],
   });
 
   const { data: members = [] } = useQuery<any[]>({
-    queryKey: ["/api/workspaces", workspaceId, "members"],
+    queryKey: [`/api/workspaces/${workspaceId}/members`],
   });
 
   const filteredTasks = useMemo(() => {
@@ -146,21 +153,119 @@ export default function BoardPage({
     }) => {
       return await apiRequest("POST", `/api/boards/${boardId}/tasks`, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+    onMutate: async (newTask) => {
+      await queryClient.cancelQueries({
+        queryKey: [`/api/boards/${boardId}/tasks`],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/workspaces", workspaceId, "stats"],
-      });
+
+      const previousTasks =
+        queryClient.getQueryData<TaskWithExtras[]>([`/api/boards/${boardId}/tasks`]) || [];
+
+      const columnTasks = previousTasks.filter(
+        (task) => task.columnId === newTask.columnId,
+      );
+      const optimisticTask: TaskWithExtras = {
+        id: `temp-${Date.now()}`,
+        boardId,
+        columnId: newTask.columnId,
+        title: newTask.title.trim(),
+        description: null,
+        priority: newTask.priority,
+        position:
+          columnTasks.length > 0
+            ? Math.max(...columnTasks.map((task) => task.position)) + 1
+            : 0,
+        dueDate: null,
+        startDate: null,
+        coverImageId: null,
+        createdAt: new Date(),
+        createdBy: null,
+        assignees: [],
+        labels: [],
+        checklist: [],
+      };
+
+      queryClient.setQueryData<TaskWithExtras[]>(
+        [`/api/boards/${boardId}/tasks`],
+        [...previousTasks, optimisticTask],
+      );
+
       setShowCreateTask(null);
       setNewTaskTitle("");
       setNewTaskPriority("medium");
+
+      return { previousTasks, optimisticTaskId: optimisticTask.id };
     },
-    onError: () => {
+    onSuccess: (savedTask, _variables, context) => {
+      queryClient.setQueryData<TaskWithExtras[]>(
+        [`/api/boards/${boardId}/tasks`],
+        (current = []) =>
+          current.map((task) =>
+            task.id === context?.optimisticTaskId
+              ? {
+                  ...savedTask,
+                  assignees: [],
+                  labels: [],
+                  checklist: [],
+                }
+              : task,
+          ),
+      );
+
+      setSelectedTask((current) =>
+        current?.id === context?.optimisticTaskId
+          ? {
+              ...savedTask,
+              assignees: current.assignees || [],
+              labels: current.labels || [],
+              checklist: current.checklist || [],
+            }
+          : current,
+      );
+
+      queryClient.invalidateQueries({
+        queryKey: [`/api/workspaces/${workspaceId}/stats`],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/workspaces/${workspaceId}/detailed-stats`],
+      });
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(
+          [`/api/boards/${boardId}/tasks`],
+          context.previousTasks,
+        );
+      }
       toast({
         title: "Error",
         description: "Failed to create task",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/boards/${boardId}/tasks`],
+      });
+    },
+  });
+
+  const updateBoardMutation = useMutation({
+    mutationFn: async (name: string) => {
+      return apiRequest("PATCH", `/api/boards/${boardId}`, { name });
+    },
+    onSuccess: (updatedBoard) => {
+      queryClient.setQueryData([`/api/boards/${boardId}`], updatedBoard);
+      queryClient.invalidateQueries({
+        queryKey: ["/api/workspaces", workspaceId, "boards"],
+      });
+      setBoardName(updatedBoard.name || "");
+    },
+    onError: (err: Error) => {
+      setBoardName(board?.name || "");
+      toast({
+        title: "Error",
+        description: err.message || "Failed to update board title",
         variant: "destructive",
       });
     },
@@ -172,8 +277,9 @@ export default function BoardPage({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "columns"],
+        queryKey: [`/api/boards/${boardId}/columns`],
       });
+
       setShowCreateColumn(false);
       setNewColumnName("");
     },
@@ -192,10 +298,10 @@ export default function BoardPage({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "columns"],
+        queryKey: [`/api/boards/${boardId}/columns`],
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: [`/api/boards/${boardId}/tasks`],
       });
     },
   });
@@ -215,9 +321,59 @@ export default function BoardPage({
         position,
       });
     },
+    onMutate: async ({ taskId, columnId, position }) => {
+      await queryClient.cancelQueries({
+        queryKey: [`/api/boards/${boardId}/tasks`],
+      });
+
+      const previousTasks =
+        queryClient.getQueryData<TaskWithExtras[]>([`/api/boards/${boardId}/tasks`]) || [];
+
+      const movedTask = previousTasks.find((task) => task.id === taskId);
+      if (!movedTask) {
+        return { previousTasks };
+      }
+
+      const updatedTasks = previousTasks.map((task) => {
+        if (task.id === taskId) {
+          return {
+            ...task,
+            columnId,
+            position,
+          };
+        }
+
+        return task;
+      });
+
+      queryClient.setQueryData<TaskWithExtras[]>(
+        [`/api/boards/${boardId}/tasks`],
+        updatedTasks,
+      );
+
+      setDraggedTaskId(null);
+      setDropColumnId(null);
+
+      return { previousTasks };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/boards", boardId, "tasks"],
+        queryKey: [`/api/boards/${boardId}/tasks`],
+      });
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(
+          [`/api/boards/${boardId}/tasks`],
+          context.previousTasks,
+        );
+      }
+      setDraggedTaskId(null);
+      setDropColumnId(null);
+      toast({
+        title: "Error",
+        description: "Failed to move task",
+        variant: "destructive",
       });
     },
   });
@@ -230,6 +386,7 @@ export default function BoardPage({
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("taskId", taskId);
     e.dataTransfer.effectAllowed = "move";
+    setDraggedTaskId(taskId);
   };
 
   const handleDrop = (e: React.DragEvent, columnId: string) => {
@@ -241,6 +398,16 @@ export default function BoardPage({
       colTasks.length > 0
         ? Math.max(...colTasks.map((t) => t.position)) + 1
         : 0;
+
+    if (
+      tasksData.find((task) => task.id === taskId)?.columnId === columnId &&
+      draggedTaskId === taskId
+    ) {
+      setDraggedTaskId(null);
+      setDropColumnId(null);
+      return;
+    }
+
     moveTaskMutation.mutate({ taskId, columnId, position });
   };
 
@@ -249,10 +416,44 @@ export default function BoardPage({
     e.dataTransfer.dropEffect = "move";
   };
 
+  const handleDragEnterColumn = (columnId: string) => {
+    if (draggedTaskId) {
+      setDropColumnId(columnId);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDropColumnId(null);
+  };
+
   const clearFilters = () => {
     setFilterPriority("all");
     setFilterAssignee("all");
     setFilterLabel("all");
+  };
+
+  const handleBoardNameSave = () => {
+    const trimmedName = boardName.trim();
+
+    if (!trimmedName) {
+      setBoardName(board?.name || "");
+      toast({
+        title: "Board title is required",
+        description: "Board title cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (trimmedName === (board?.name || "")) {
+      if (trimmedName !== boardName) {
+        setBoardName(trimmedName);
+      }
+      return;
+    }
+
+    updateBoardMutation.mutate(trimmedName);
   };
 
   if (columnsLoading) {
@@ -307,12 +508,28 @@ export default function BoardPage({
               {board?.name?.[0]?.toUpperCase()}
             </span>
           </div>
-          <h1
-            className="text-lg font-semibold truncate"
-            data-testid="text-board-name"
-          >
-            {board?.name}
-          </h1>
+          {["owner", "admin"].includes(userRole) ? (
+            <Input
+              value={boardName}
+              onChange={(e) => setBoardName(e.target.value)}
+              onBlur={handleBoardNameSave}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              className="text-lg font-semibold truncate border-none p-0 h-auto focus-visible:ring-0 shadow-none bg-transparent"
+              data-testid="text-board-name"
+            />
+          ) : (
+            <h1
+              className="text-lg font-semibold truncate"
+              data-testid="text-board-name"
+            >
+              {board?.name}
+            </h1>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center border rounded-md overflow-visible">
@@ -437,9 +654,12 @@ export default function BoardPage({
               return (
                 <div
                   key={column.id}
-                  className="w-72 shrink-0 flex flex-col max-h-full"
+                  className={`w-72 shrink-0 flex flex-col max-h-full rounded-lg transition-colors ${
+                    dropColumnId === column.id ? "bg-muted/40" : ""
+                  }`}
                   onDrop={(e) => handleDrop(e, column.id)}
                   onDragOver={handleDragOver}
+                  onDragEnter={() => handleDragEnterColumn(column.id)}
                 >
                   <div className="flex items-center justify-between gap-2 mb-3 px-1">
                     <div className="flex items-center gap-2 min-w-0">
@@ -500,7 +720,12 @@ export default function BoardPage({
                         key={task.id}
                         task={task}
                         onDragStart={handleDragStart}
-                        onClick={() => setSelectedTask(task)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => {
+                          if (task.id.startsWith("temp-")) return;
+                          setSelectedTask(task);
+                        }}
+                        isDragging={draggedTaskId === task.id}
                       />
                     ))}
 
@@ -898,11 +1123,15 @@ export default function BoardPage({
 function TaskCard({
   task,
   onDragStart,
+  onDragEnd,
   onClick,
+  isDragging,
 }: {
   task: TaskWithExtras;
   onDragStart: (e: React.DragEvent, taskId: string) => void;
+  onDragEnd: () => void;
   onClick: () => void;
+  isDragging: boolean;
 }) {
   const priorityConf = PRIORITY_CONFIG[task.priority || "medium"];
   const PriorityIcon = priorityConf?.icon || Minus;
@@ -911,9 +1140,12 @@ function TaskCard({
 
   return (
     <Card
-      className="cursor-pointer hover-elevate overflow-visible"
+      className={`cursor-pointer hover-elevate overflow-visible transition-opacity ${
+        isDragging ? "opacity-50" : ""
+      }`}
       draggable
       onDragStart={(e) => onDragStart(e, task.id)}
+      onDragEnd={onDragEnd}
       onClick={onClick}
       data-testid={`card-task-${task.id}`}
     >

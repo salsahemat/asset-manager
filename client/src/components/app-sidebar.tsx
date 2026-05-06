@@ -33,6 +33,7 @@ import {
   Home,
   MessageCircle,
   HelpCircle,
+  ClipboardList,
 } from "lucide-react";
 import type { User } from "@shared/models/auth";
 import type { Workspace, Board } from "@shared/schema";
@@ -223,6 +224,18 @@ export function AppSidebar({
                   <Link href="/questions" data-testid="link-questions">
                     <HelpCircle className="w-4 h-4" />
                     <span>Questions</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {/* ← TAMBAH INI */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === "/attendance"}
+                >
+                  <Link href="/attendance" data-testid="link-attendance">
+                    <ClipboardList className="w-4 h-4" />
+                    <span>Attendance</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

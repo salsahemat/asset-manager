@@ -34,6 +34,31 @@ export async function apiRequest<T = any>(
   return res.json();
 }
 
+export async function apiRequestFormData<T = any>(
+  method: string,
+  url: string,
+  formData: FormData
+): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${session?.access_token}`,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Request failed");
+  }
+
+  return res.json();
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
@@ -44,7 +69,13 @@ export const getQueryFn: <T>(options: {
         data: { session },
       } = await supabase.auth.getSession();
 
-      const res = await fetch(queryKey[0] as string, {
+      // Gabungkan semua segment jadi URL
+      const url = queryKey
+        .filter(Boolean)
+        .join("/")
+        .replace(/([^:])\/\//g, "$1/"); // hindari double slash
+
+      const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
         },
