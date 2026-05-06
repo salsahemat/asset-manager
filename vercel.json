@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm ci --include=dev && npm run build",
+  "outputDirectory": "dist/public",
+  "installCommand": "npm ci --include=dev",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
