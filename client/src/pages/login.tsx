@@ -27,10 +27,11 @@ export default function Login() {
   }
 
   async function handleGoogleLogin() {
+    const redirectTo = window.location.origin;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "http://localhost:5002",
+        redirectTo,
       },
     });
 
