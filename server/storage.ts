@@ -18,8 +18,8 @@ import {
   type ChatReaction, type InsertChatReaction, chatReactions,
   type Question, type InsertQuestion, questions,
   type QuestionResponse, type InsertQuestionResponse, questionResponses,
-} from "@shared/schema";
-import { type User, type UpsertUser, users } from "@shared/models/auth";
+} from "../shared/schema";
+import { type User, type UpsertUser, users } from "../shared/models/auth";
 import { db, pool } from "./db";
 import { eq, and, desc, asc, sql, count, lt, ilike, or } from "drizzle-orm";
 import { inArray } from "drizzle-orm";

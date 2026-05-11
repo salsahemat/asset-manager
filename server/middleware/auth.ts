@@ -4,7 +4,7 @@ dotenv.config();
 import { createClient } from "@supabase/supabase-js";
 import type { Request, Response, NextFunction } from "express";
 import { db } from "../db";
-import { users } from "@shared/models/auth";
+import { users } from "../../shared/models/auth";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
